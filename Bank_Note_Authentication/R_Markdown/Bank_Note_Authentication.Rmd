@@ -1,0 +1,408 @@
+---
+title: "MachineLearning_Classification_paudyal"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+# Loading my Libraries
+rm(list = ls())
+library(MASS)
+library(class)
+library(ggplot2)
+library(cowplot)
+library(caTools)
+library(caret)
+library(pROC)
+library(ROCR)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Banknote authentication
+
+
+This dataset presents an example of classification problem (authentic vs. counterfeit bank notes) using continuous 
+predictors derived from image processing. More details about underlying data can be found in 
+corresponding [dataset description](http://archive.ics.uci.edu/ml/datasets/banknote+authentication) at UCI ML website. 
+
+Loading the data, `data_banknote_authentication.txt` with the following attributes. The first $\textbf{four attributes}$ are used as $\textbf{predictors}$ to classify the outcome (authenic or counterfeit) and is presented by the $\textbf{fifth attribute as "Class"}$: 
+
+1.$\textbf{Var.W}$   : variance of Wavelet Transformed image (continuous)  
+
+2.$\textbf{Skew.W}$  : skewness of Wavelet Transformed image (continuous) 
+
+3.$\textbf{Curt.W}$  : curtosis of Wavelet Transformed image (continuous) 
+
+4.$\textbf{Entropy}$ : entropy of image (continuous) 
+
+5.$\textbf{Class}$   : class (integer) 
+
+```{r Banknote_Authentication}
+bank.N <- read.table("data_banknote_authentication.txt",sep=",")
+colnames(bank.N) <- c("Var.W","Skew.W","Curt.W","Entropy", "Class")
+# Checking the "Predictors" summary
+summary(bank.N[,1:4])
+# detecting number of ZEROs versus ONEs on the Outcome, "Class" attribute
+bank.N$Class <- factor(bank.N$Class)
+summary(bank.N[,5])
+# The total number of Zeros and Ones are accounted for: 762 + 610 = 1372, all the data has been classified as Authenic or Counterfeit.
+dim(bank.N)
+```
+#Logistic Regression
+
+Fit logistic regression model of the class attribute using the four features as predictors in the model. Based on on the report from the fitting, which features seems to be significantly related to our "Class", a categorical outcome. Use prediction for the entire data (no splitting for train/test). How does the prediction result compare to our "Class" (i.e. confusion Table). 
+
+$\textbf{Logistic Regression Model}$
+
+```{r logistic model}
+
+L.R.fit = glm(formula = Class ~ ., family = "binomial", data = bank.N)
+summary(L.R.fit)
+
+```
+
+Summary of the logistic regression is shown above. 
+
+
+The $\textbf{confusion matrix}$ of our logistic model of the entire dataset is given below
+
+```{r}
+
+predict <- predict(L.R.fit, type = 'response')
+#confusion matrix
+conf_matrix = table(bank.N[,"Class"], predict > 0.5)
+conf_matrix
+```
+The confusion matrix from the logistic regression gives the good prediction of bank note.
+
+Plotting the link and response of the above prediction.
+```{r}
+L.R.link <- predict(L.R.fit,type="link")
+L.R.response <- predict(L.R.fit,type="response")
+
+
+
+class_predict <- data.frame(link=L.R.link, 
+                         response=L.R.response,
+                         Class = bank.N$Class,
+                         stringsAsFactors=FALSE)
+
+
+  ggplot(class_predict, aes(x=link, y=response, col=Class)) + 
+  scale_color_manual(values=c("blue", "red")) + 
+  geom_point() + 
+  geom_rug() + 
+  ggtitle("Classification")
+```
+
+Calculate the error rate and explain if this is a training or test error? Also calculate the sensitivity and specificity. 
+
+```{r}
+logr_accuracy = sum(diag(conf_matrix))/sum(conf_matrix)
+logr_accuracy
+
+logr_error = 1 - logr_accuracy
+logr_error
+
+sensitivity = conf_matrix[2,2]/sum(conf_matrix[2,])
+sensitivity
+
+specificity = conf_matrix[1,1]/sum(conf_matrix[1,])
+specificity
+
+```
+The $\textbf{Logistic regression model}$ shows the accuracy of 99.19% and error of 0.80%. The specificity is 99.34% and sensitivity is 99.01%
+
+
+# LDA and QDA (package: MASS)
+
+Fit LDA and QDA model on the entire dataset and calculate confusion matrix, (training) error rate, sensitivity and specificity for each. Compare them to those of logistic regression. Describe the results.
+
+
+$\textbf{Quadratic Discriminant Analysis}$
+The summary of LDA model is shown below
+```{r}
+LDA.fit <- lda(Class~., data=bank.N)
+summary(LDA.fit)
+```
+
+```{r}
+LDA.pred <- predict(LDA.fit, bank.N)
+c_mat <- table(LDA.pred$class, bank.N$Class)
+c_mat
+
+```
+Confusion matrix for LDA is shown above. False Negative is really high. It gives us good 1's prediction.
+
+$\textbf{Linear Discriminant Model}$
+```{r}
+lda_accuracy <- confusionMatrix(c_mat)$overall[[1]]
+lda_accuracy
+
+lda_error <- 1-lda_accuracy
+lda_error
+
+lda_sens <- sensitivity(c_mat)
+lda_sens
+
+lda_spec <- specificity(c_mat)
+lda_spec
+```
+The accuracy of our prediction is 97.66% which gives us $\textbf{error rate}$ of 2.33%. The sensitivity is 95.80% and specificity is 100%.
+
+```{r}
+
+QDA.fit <- qda(Class~., data=bank.N)
+QDA.pred <- predict(QDA.fit, bank.N)
+summary(QDA.pred)
+
+```
+Summary of the QDA predict is shown above
+
+```{r}
+c_mat = table(QDA.pred$class, bank.N$Class)
+c_mat
+
+```
+The confusion matrix of shows high false negative value. The model did great predction on 1s. 
+
+```{r}
+qda_accuracy <- confusionMatrix(c_mat)$overall[[1]]
+as.matrix(c_mat)
+qda_accuracy
+
+qda_error <- 1-qda_accuracy
+qda_error
+
+qda_sens <- sensitivity(c_mat)
+qda_sens
+
+qda_spec <- specificity(c_mat)
+qda_spec
+```
+The accuracy of our prediction is 98.54% which gives us $\textbf{error rate}$ of 0.14%. The sensitivity is 97.37% and specificity is 100%.
+
+
+#k-NN (package: Class)
+
+Using `knn`, fit k-NN classifiers for the entire dataset and calculate confusion matrix, (training) error rate, sensitivity/specificity for  k = 1 : 10. Compare them to corresponding results from logistic regression, LDA and QDA. Describe results of this comparison.  Discuss your low training  error rate for k-NN at k=1!
+
+$\textbf{K-Nearest Neighbour(k-NN)}$
+
+```{r}
+bank.N_tr.tor <- bank.N[,5]
+bank.N_tr <- scale(bank.N[,c(1,2,3,4)])
+
+accuracy <- c()
+for (n.K in c(1:10)) {
+  #knn fit for the given data
+  knn.fit <- knn(train=bank.N_tr, test=bank.N_tr, cl=bank.N_tr.tor, k=n.K)
+  
+  c_mat <- confusionMatrix(bank.N_tr.tor, knn.fit)
+  if(n.K == 1){
+    c_mat_k.1 <- table(bank.N_tr.tor, knn.fit)
+  }
+
+  print(paste("Value of K:", n.K))
+  print(as.matrix(c_mat))
+  accuracy <- append(accuracy, (c_mat$overall[[1]] * 100))
+}
+Error = 100 - accuracy
+plot(Error, type = 'b', main = "Error plot for KNN", pch = 16,col = 20, xlab = "k")
+
+```
+
+The above output shows that the error rate increases with the increase in K. Without scaling the data, the model show accuracy of 100% for any k which says that the data might be overfitted.
+KNN where k=1 gives us 100% accurate result. 
+
+#TEST errors 
+
+Now compare of logistic regression, LDA, QDA and k-NN. Using re-sampling approach, obtain test error as well as sensitivity and speciﬁcity for each of these methods (logistic regression, LDA, QDA, k-NN with k = 1, 3, 5, 11, 21, 51, 101 ). Present your results in the form of BoxPlots, compare test error, sensitivity, and specificity for all these methods and discuss their relative performance.
+
+
+$\textbf{Comparision of logistic regression, LDA, QDA and k-NN}$
+Comparing the error rate, sensitivity and specificity of the test data.
+
+```{r}
+ntry <- 7
+
+logr_error_rate <- NULL
+qda_error_rate <- NULL
+lda_error_rate <- NULL
+knn_error_rate <- NULL
+
+
+logr_sens_rate <- NULL
+qda_sens_rate <- NULL
+lda_sens_rate <- NULL
+knn_sens_rate <- NULL
+
+logr_spec_rate <- NULL
+qda_spec_rate <- NULL
+lda_spec_rate <- NULL
+knn_spec_rate <-NULL
+
+
+for(i in 1:ntry)
+{
+tr_idx  <- sample(nrow(bank.N),round(0.8*nrow(bank.N),digits=0)); length(tr_idx)
+ts_idx  <- -tr_idx
+bank.N_tr <- bank.N[tr_idx, ]; dim(bank.N_tr)
+bank.N_ts <- bank.N[ts_idx, ]; dim(bank.N_ts)
+bank.N_tr_f.tor <- bank.N[tr_idx, "Class"]
+bank.N_ts_f.tor <- bank.N[ts_idx, "Class"]
+
+# MODELS
+
+#Logistic Regression Model
+L.R.fit = glm(formula = Class ~ ., family = "binomial", data = bank.N_tr)
+L.R.prob <- predict(L.R.fit,newdata=bank.N_ts,type="response")
+L.R.response <- predict(L.R.fit,newdata=bank.N_ts,type="response")
+
+conf_matrix = table(bank.N_ts[,"Class"], L.R.response > 0.5)
+#calculate the error rate, sensitivity and specificity for logistic regresstion
+
+logr_test_accuracy = sum(diag(conf_matrix))/sum(conf_matrix)
+logr_test_error = 1 - logr_test_accuracy
+logr_test_sensitivity = conf_matrix[2,2]/sum(conf_matrix[2,])
+logr_test_specificity = conf_matrix[1,1]/sum(conf_matrix[1,])
+
+logr_error_rate <- rbind(logr_error_rate,logr_test_error)
+logr_sens_rate <- rbind(logr_sens_rate,logr_test_sensitivity)
+logr_spec_rate <- rbind(logr_spec_rate,logr_test_specificity)
+
+#LDA Model
+LDA.fit <- lda(Class~., data=bank.N_tr)
+LDA.pred <- predict(LDA.fit, bank.N_ts)
+
+c_mat <- table(LDA.pred$class, bank.N_ts$Class)
+
+#calculate the error rate, sensitivity and specificity for LDA
+LDA_test_accuracy<-accuracy <- confusionMatrix(c_mat)$overall[[1]]
+LDA_test_error <- 1-LDA_test_accuracy
+LDA_test_sensitivity <- sensitivity(c_mat)
+LDA_test_specificity <- specificity(c_mat)
+
+lda_error_rate <- rbind(lda_error_rate,LDA_test_error)
+lda_sens_rate <- rbind(lda_sens_rate,LDA_test_sensitivity)
+lda_spec_rate <- rbind(lda_spec_rate,LDA_test_specificity)
+
+#QDA Model
+QDA.fit <- qda(Class~., data=bank.N_tr)
+QDA.pred <- predict(QDA.fit, bank.N_ts)
+
+c_mat = table(QDA.pred$class, bank.N_ts$Class)
+
+#calculate the error rate, sensitivity and specificity for QDA
+QDA_test_accuracy<-accuracy <- confusionMatrix(c_mat)$overall[[1]]
+QDA_test_error <- 1-QDA_test_accuracy
+QDA_test_sensitivity <- sensitivity(c_mat)
+QDA_test_specificity <- specificity(c_mat)
+
+qda_error_rate <- rbind(qda_error_rate,QDA_test_error)
+qda_sens_rate <- rbind(qda_sens_rate,QDA_test_sensitivity)
+qda_spec_rate <- rbind(qda_spec_rate,QDA_test_specificity)
+}
+```
+
+The following is the test error rate for KNN 
+```{r}
+accuracy <- c()
+for (n.K in c(1, 3, 5, 11, 21, 51, 101)) {
+  #knn fit for the given data
+  knn.fit <- knn(train=bank.N_tr, test=bank.N_ts, cl=bank.N_tr_f.tor, k=n.K)
+  
+  conf_matrix <- table(bank.N_ts_f.tor, knn.fit)
+
+  knn_test_accuracy = sum(diag(conf_matrix))/sum(conf_matrix)
+  knn_test_accuracy
+
+  knn_test_error = 1 - knn_test_accuracy
+  knn_test_error
+
+  knn_test_sensitivity = conf_matrix[2,2]/sum(conf_matrix[2,])
+  knn_test_sensitivity
+
+  knn_test_specificity = conf_matrix[1,1]/sum(conf_matrix[1,])
+  knn_test_specificity
+
+###
+  knn_error_rate <- rbind(knn_error_rate,knn_test_error)
+  knn_sens_rate <- rbind(knn_sens_rate,knn_test_sensitivity)
+  knn_spec_rate <- rbind(knn_spec_rate,knn_test_specificity)
+
+}
+
+```
+
+$\textbf{Comparision table}$ for error rate, sensitivity and specificity of the test. 
+```{r}
+
+error <- data.frame(logr_error_rate = logr_error_rate[,1] * 100, lda_error_rate = lda_error_rate[,1] * 100, qda_error_rate = qda_error_rate[,1]*100, knn_error_rate = knn_error_rate[,1]*100)
+sensitivity <- data.frame(logr_sens_rate = logr_sens_rate[,1] * 100, lda_sens_rate = lda_sens_rate[,1] * 100, qda_sens_rate = qda_sens_rate[,1]*100, knn_sens_rate = knn_sens_rate[,1]*100)
+specificity <- data.frame(logr_spec_rate = logr_spec_rate[,1] * 100, lda_spec_rate = lda_spec_rate[,1] * 100, qda_spec_rate = qda_spec_rate[,1]*100, knn_spec_rate = knn_spec_rate[,1]*100)
+
+error
+sensitivity
+specificity
+
+```
+$\textbf{Box plot comparision}$
+Comparision of Logistic Regresssion, LDA, QDA and K-NN test result is show in box plot below
+
+```{r}
+ggplot(stack(error), aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot() +
+  ylab("Error") +
+  xlab("Performance")
+
+
+ggplot(stack(sensitivity), aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot() +
+  ylab("Sensitivity")+
+  xlab("Performance")
+
+ggplot(stack(specificity), aes(x = ind, y = values, fill = ind)) +
+  geom_boxplot() +
+  ylab("Specificity")+
+  xlab("Performance")
+
+
+
+```
+
+The above plot show that KNN did a great predition. K = 1 in KNN model gives us 100% accurate result. 
+The sensitivity plot shows the percentage of the bank note that is correctly identified as having the condition. KNN and logistic regression gives us high rate of sensitivity.
+The specificity plot shows that KNN has high variance of the specificity. While lda and qda has high specificity rate which concludes that lda and qda did a great job in identifying the percentage of bank note not having the condition. 
+
+#ROC and AUC
+
+Plot the Region of Convergence "ROC" curve and find the numerical value of Area Under Curve "AUC"
+$\textbf{Region of Convergence and Area Under the curve}$
+Region of convergence for entire dataset
+```{r}
+predicted_prob<-predict(L.R.fit,type="response")
+roccurve <- roc(L.R.fit$y, predicted_prob)
+roccurve
+plot(roccurve)
+```
+
+Manually calculation region of convergence for the test data
+```{r}
+L.R.prob <- predict(L.R.fit,newdata=bank.N_ts,type="response")
+roc.pred <- prediction(L.R.prob,bank.N_ts_f.tor)
+roc.tpr.fpr <- performance(roc.pred,measure="tpr", x.measure = "fpr")
+plot(roc.tpr.fpr, col="blue3",col.lab="red3",
+     xlab="False Positive(FP), rate",
+     ylab="True Positive(TP), rate")
+
+roc.auc    <- performance(roc.pred,measure="auc")
+Area_Under <- roc.auc@y.values[[1]]
+Area_Under
+```
+The area under the curve is 0.99.
