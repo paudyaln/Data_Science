@@ -1,0 +1,290 @@
+---
+title: "BANKNOTE_CLASSIFICATION-SVM-RF"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(ISLR)
+library(e1071)
+library(randomForest)
+library(class)
+library(ggplot2)
+library(caret)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Preface
+
+We will exlore the behavior of support vector classifiers `SVC` and `SVMs` on our familiar `banknote authentication dataset` from UCI ML archive.  
+
+
+# Banknote authentication
+
+
+This dataset presents an example of classification problem (authentic vs. counterfeit bank notes) using continuous 
+predictors derived from image processing. More details about underlying data can be found in 
+corresponding [dataset description](http://archive.ics.uci.edu/ml/datasets/banknote+authentication) at UCI ML website. 
+
+Loading the data, `data_banknote_authentication.txt` with the following attributes. The first $\textbf{four attributes}$ are used as $\textbf{predictors}$ to classify the outcome (authenic or counterfeit) and is presented by the $\textbf{fifth attribute as "Class"}$: 
+
+1.$\textbf{Var.W}$   : variance of Wavelet Transformed image (continuous)  
+
+2.$\textbf{Skew.W}$  : skewness of Wavelet Transformed image (continuous) 
+
+3.$\textbf{Curt.W}$  : curtosis of Wavelet Transformed image (continuous) 
+
+4.$\textbf{Entropy}$ : entropy of image (continuous) 
+
+5.$\textbf{Class}$   : class (integer) 
+
+```{r Banknote_Authentication}
+bank.N <- read.table("data_banknote_authentication.txt",sep=",")
+colnames(bank.N) <- c("Var.W","Skew.W","Curt.W","Entropy", "Class")
+# Checking the "Predictors" summary
+summary(bank.N[,1:4])
+# detecting number of ZEROs versus ONEs on the Outcome, "Class" attribute
+bank.N$Class <- factor(bank.N$Class)
+summary(bank.N[,5])
+# The total number of Zeros and Ones are accounted for: 762 + 610 = 1372, all the data has been classified as Authenic or Counterfeit.
+dim(bank.N)
+```
+
+
+Here we will use SVM implementation available in library `e1071` to fit classifiers with linear and `radial` and `polynomial` kernels. We then compare their relative performance as well as to that of random forest and KNN.
+
+# Problem 1 : support vector classifier (i.e. using linear kernel) 
+
+Use `svm` from library `e1071` with `kernel="linear"` to fit classifier (e.g. ISLR Ch.9.6.1) to the entire banknote authentication dataset setting parameter `cost` to 0.001, 1, 1000 and 1000000.  Describe how this change in parameter `cost` affects model fitting process in terms of:
+  -- Its outcome
+  -- Number of support vectors and its implication
+  -- Explain why change in `cost` value impacts number of support vectors
+  
+
+Cost = 0.001
+```{r}
+
+svm.fit.R <- svm(Class~.,data=bank.N,kernel="linear",cost=0.001,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N, select=-Class))
+confusionMatrix(pred, bank.N$Class)
+```
+cost = 1
+```{r}
+svm.fit.R <- svm(Class~.,data=bank.N,kernel="linear",cost=1,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N, select=-Class))
+confusionMatrix(pred, bank.N$Class)
+```
+cost = 1000
+```{r}
+svm.fit.R <- svm(Class~.,data=bank.N,kernel="linear",cost=1000,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N, select=-Class))
+confusionMatrix(pred, bank.N$Class)
+```
+cost = 1000000
+```{r}
+svm.fit.R <- svm(Class~.,data=bank.N,kernel="linear",cost=1000000,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N, select=-Class))
+confusionMatrix(pred, bank.N$Class)
+
+```
+The above result shows that when the cost argument is smaller, the margin will be wide. Thus, the number of support vector decreases with the increase in Cost. The increase in Cost from 0.001 to 1000 also increase the accuracy of the classification but the accuracy rate decrease for 1000000.
+  
+  
+  
+
+  Use `tune()` function from library `e1071` (see ISLR Ch.9.6.1 for details and examples of usage) to determine approximate value of cost (in the range between 0.1, 1, 10, 100) that yields the lowest error when using `tune()`!
+  Setup a resampling procedure repeatedly splitting entire dataset into training and test, using training data to `tune()` cost value and test dataset to estimate classification error.
+  Report and discuss test errors on the selected values of `cost`.
+  
+```{r}
+error <- NULL
+tr_idx  <- sample(nrow(bank.N),round(0.8*nrow(bank.N),digits=0)); length(tr_idx)
+ts_idx  <- -tr_idx
+bank.N_tr <- bank.N[tr_idx, ]; dim(bank.N_tr)
+bank.N_ts <- bank.N[ts_idx, ]; dim(bank.N_ts)
+bank.N_tr_f.tor <- bank.N[tr_idx, "Class"]
+bank.N_ts_f.tor <- bank.N[ts_idx, "Class"]
+
+
+set.seed(1)
+tune.out=tune(svm ,Class~.,data=bank.N_tr,kernel ="radial",
+ranges=list(cost=c(1,2,5,10,20)), gamma = c(0.01,0.02,0.05,0.1,0.2))
+tune.out
+```
+The tuning of SVM shows that cost 100 is the best parameter for the best performance. 
+
+```{r}
+
+svm.fit.R <- svm(Class~.,data=bank.N_tr,kernel="linear",cost=0.1,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N_ts, select=-Class))
+c_mat <- confusionMatrix(pred, bank.N_ts$Class)
+c_mat$table
+error <- append(error, 1 - c_mat$overall[[1]])
+
+
+svm.fit.R <- svm(Class~.,data=bank.N_tr,kernel="linear",cost=1,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N_ts, select=-Class))
+c_mat <- confusionMatrix(pred, bank.N_ts$Class)
+c_mat$table
+error <- append(error, 1 - c_mat$overall[[1]])
+
+
+svm.fit.R <- svm(Class~.,data=bank.N_tr,kernel="linear",cost=10,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N_ts, select=-Class))
+c_mat <- confusionMatrix(pred, bank.N_ts$Class)
+c_mat$table
+error <- append(error, 1 - c_mat$overall[[1]])
+
+
+svm.fit.R <- svm(Class~.,data=bank.N_tr,kernel="linear",cost=100,scale=FALSE)
+summary(svm.fit.R)
+pred <- predict(svm.fit.R, subset(bank.N_ts, select=-Class))
+c_mat <- confusionMatrix(pred, bank.N_ts$Class)
+c_mat$table
+error <- append(error, 1 - c_mat$overall[[1]])
+```
+Comparing error
+
+```{r}
+plot(error, type = 'b', main = "SVM Classification", pch = 16,col = 20, xlab = "error")
+
+```
+Cost 100 shows that lowest error rate when tuned. From the above graph, it is clear that he error rate decreases with increase in cost. It also shows that cost 100 has lowest error rate for test data set when trained using support vector classifier.
+
+
+# Problem 2: comparison to random forest
+
+Fit random forest classifier on the entire banknote authentication dataset with default parameters. *The model reports a confusion matrix.* From the report you can Calculate the misclassification error. 
+
+  -- Why the calculated error above confusion matrix represents an estimated test_err? (as opposed to train) error of the procedure.  
+  -- Compare resulting test error to that for support vector classifier in problem 1
+
+```{r}
+rf.bank <- randomForest(Class~.,data=bank.N)
+rf.bank
+m.pred <- predict(rf.bank,bank.N)
+c_mat <- table(m.pred, bank.N$Class)
+
+accuracy <- sum(diag(c_mat))/sum(c_mat)
+error <- 1-accuracy
+error
+
+```
+Random forest classificaton the entire bank authentication dataset yeild 100% accurate classification giving us 0% error rate. The OOB error for the test dataset is 58%.
+
+The  random forest classification algorthm form the decision tree on the trained dataset to classify the test dataset. When  
+
+ 
+# Problem 3: Comparison to cross-validation tuned KNN predictor
+
+Use `tune.knn()` from the library `e1071` on the entire dataset to determine optimal `k` for k-NN classifier. Setup resampling procedure similar to problem 1 while  1) split banknote authentication dataset into training and test, 2) Using `tune.knn()` on training data to determine optimal `k`, and 3) use `k` estimated by `tune.knn()` to make KNN classifications on test data.
+
+```{r}
+
+knn_tune <- tune.knn(bank.N_tr[,-5], bank.N_tr[,5], k = 1:25, tunecontrol = tune.control(sampling = "cross"))
+summary(knn_tune)
+
+```
+The above tuning process of knn shows that the algorithm yeilds 100% accuracy for any k from 2 to 12. This shows the bestk for the given dataset is 2.
+The Knn test prediction is done below.
+
+Report and discuss test errors from this procedure and selected values of `k`. 
+Compare the selected `k` test_err to those for support vector classifier (problem 1) and randomForest (problem 2).
+```{r}
+knn.fit <- knn(train=bank.N_tr, test=bank.N_ts, cl=bank.N_tr_f.tor, k=2)
+  
+c_mat <- table(bank.N_ts_f.tor, knn.fit)
+c_mat
+
+accuracy <- sum(diag(c_mat))/sum(c_mat)
+error <- 1- accuracy
+error
+```
+The Knn algorithm for k = 200 on the given dataset gives 100% accurate result. While for support vector machine, cost 100 give the most accurate result and random forest also gave most accurate result on test data. 
+
+
+
+# Problem 4: SVM with radial kernel
+
+## Sub-problem 4a: impact of `gamma` on classification surface
+
+*Plot* SVM model fit to the banknote authentication dataset using (for the ease of plotting) *only variance and skewness* as predictors variables, `kernel="radial"`, `cost=1` and `gamma=1` (see ISLR Ch.9.6.2 for an example of that done with a simulated dataset).  You should be able to see in the resulting plot the magenta-cyan classification boundary as computed by this model.  Produce the same kinds of plots using 0.01 and 100 as values of `gamma` also.  Compare classification boundaries between these three plots and describe how they are impacted by the change in the value of `gamma`.  Can you trace it back to the role of `gamma` in the equation introducing it with the radial kernel in ISLR?
+
+```{r}
+bank.N_data <- cbind(var = bank.N$Var.W, skew = bank.N$Skew.W)
+bank_dat <- data.frame(bank.N_data, Class = as.factor(bank.N$Class))
+
+plot(bank.N_data, col = bank.N$Class)
+
+
+svm.fit = svm(Class ~ ., data = bank_dat, kernel ="radial", gamma=0.1, cost=1)
+plot(svm.fit, bank_dat)
+summary(svm.fit)
+
+
+svm.fit = svm(Class ~ ., data = bank_dat, kernel ="radial", gamma=1, cost=1)
+plot(svm.fit, bank_dat)
+summary(svm.fit)
+
+svm.fit = svm(Class ~ ., data = bank_dat, kernel ="radial", gamma=100, cost=1)
+plot(svm.fit, bank_dat)
+summary(svm.fit)
+
+```
+
+We can see from the above plot that there are are fair number of training errors in each plot. Plot for gamma = 100 is very irregular. and probably would over fit the data. PLot for gamma = 01 seems to have least error than plot for gamma = 1. 
+
+
+## Sub-problem 4b: test error for SVM with radial kernel
+
+Setup a reesampling process (similar to Problem 1).
+1) split the entire dataset (*use all predictors*) into training and test datasets, 
+2) use `tune()` function to determine optimal values of `cost=c(1,2,5,10,20)` 
+   and `gamma=c(0.01,0.02,0.05,0.1,0.2)` and 
+3) calculate test error using these values of `cost` and `gamma`.  You can start with `cost=c(1,2,5,10,20)` and `gamma=c(0.01,0.02,0.05,0.1,0.2)` as starting ranges to evaluate by `tune()`, Present resulting test error graphically, compare it to that of support vector classifier (with linear kernel), random forest and KNN classifiers. Discuss results of these comparisons. 
+
+```{r}
+
+set.seed(1)
+tune.out = tune(svm ,Class~.,data=bank.N ,kernel ="radial",
+ranges=list(cost=c(0.1, 1, 10, 100)), gamma =c(0.01,0.02,0.05,0.1,0.2))
+summary(tune.out)
+
+```
+The SVM tuning shows that high the gamma and higher cost, gives best performance. The best cost is 100 anyway as increasing in cost gives the irragular predication. The gamma of 2 is the best fit for this dataset. 
+
+# Problem 5: SVM with polynomial kernel
+
+Repeat similar procedure as in problem *4b* for `kernel="polynomial"`. Determine ranges of `coef0`, `degree`, `cost` and `gamma` to be used with `tune()`.  
+Present and discuss resulting test error. 
+Compare the result to `linear`, `radial` kernels, `randomForest` and `k-NN`.
+
+```{r}
+tune.out = tune(svm ,Class~.,data=bank.N_tr,kernel ="polynomial",
+ranges=list(cost=c(0.1, 1, 10, 100)), gamma =c(0.01,0.02,0.05,0.1,0.2) )
+summary(tune.out)
+
+
+svm.fit = svm(Class ~ ., data = bank.N_tr, kernel ="polynomial", gamma=1, cost=100)
+summary(svm.fit)
+
+```
+
+Cost 100 and gamma = 0.2 gives the least test error for support vector machine. 
+The polynomial kernel yelds the higher error rate than radial and linear kernel for SVM. The error rate for SVM with polynomial kernal is higher than K-NN as well.
+
+
